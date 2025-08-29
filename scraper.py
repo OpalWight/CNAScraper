@@ -4,6 +4,7 @@ import json
 import re
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from urllib.parse import urljoin
+import hashlib
 
 def get_structured_urls(base_url):
     """
@@ -97,6 +98,70 @@ def extract_chapter_number(url):
         return match.group(1)
     return "N/A"
 
+def generate_skill_id(title, content):
+    """Generate a skill ID based on title and content analysis."""
+    title_lower = title.lower()
+    content_lower = content.lower()
+    
+    if any(word in title_lower or word in content_lower for word in ['transfer', 'mobility', 'ambulation', 'walking', 'gait']):
+        return "mobility-assistance"
+    elif any(word in title_lower or word in content_lower for word in ['hygiene', 'bathing', 'shower', 'oral care']):
+        return "personal-hygiene"
+    elif any(word in title_lower or word in content_lower for word in ['vital signs', 'temperature', 'pulse', 'blood pressure']):
+        return "vital-signs"
+    elif any(word in title_lower or word in content_lower for word in ['medication', 'drug', 'prescription']):
+        return "medication-management"
+    elif any(word in title_lower or word in content_lower for word in ['nutrition', 'feeding', 'diet', 'food']):
+        return "nutrition-care"
+    elif any(word in title_lower or word in content_lower for word in ['communication', 'interpersonal', 'therapeutic']):
+        return "communication"
+    elif any(word in title_lower or word in content_lower for word in ['safety', 'infection', 'prevention']):
+        return "safety-infection-control"
+    else:
+        return "general-care"
+
+def determine_criticality(content):
+    """Determine criticality level based on content analysis."""
+    content_lower = content.lower()
+    
+    high_keywords = ['safety', 'fall prevention', 'infection control', 'vital signs', 'emergency', 'risk', 'injury']
+    medium_keywords = ['procedure', 'assessment', 'documentation', 'communication']
+    
+    if any(keyword in content_lower for keyword in high_keywords):
+        return "high"
+    elif any(keyword in content_lower for keyword in medium_keywords):
+        return "medium"
+    else:
+        return "low"
+
+def generate_tags(title, content, part_title):
+    """Generate relevant tags based on content analysis."""
+    tags = ["credentia"]  # Always include credentia tag
+    
+    title_lower = title.lower()
+    content_lower = content.lower()
+    part_lower = part_title.lower()
+    
+    # Add tags based on content analysis
+    tag_keywords = {
+        "mobility": ["transfer", "mobility", "ambulation", "walking", "gait", "movement"],
+        "transfer-belt": ["transfer belt", "gait belt", "transfer-belt", "gait-belt"],
+        "fall-prevention": ["fall prevention", "fall", "safety", "orthostatic", "dizziness"],
+        "safety": ["safety", "injury", "prevention", "risk", "secure"],
+        "hygiene": ["hygiene", "bathing", "shower", "oral care", "personal care"],
+        "vital-signs": ["vital signs", "temperature", "pulse", "blood pressure", "heart rate"],
+        "communication": ["communication", "interpersonal", "therapeutic", "rapport"],
+        "infection-control": ["infection", "handwashing", "ppe", "isolation", "sterile"],
+        "documentation": ["documentation", "charting", "record", "report"],
+        "nutrition": ["nutrition", "feeding", "diet", "food", "meal"]
+    }
+    
+    for tag, keywords in tag_keywords.items():
+        if any(keyword in content_lower or keyword in title_lower for keyword in keywords):
+            tags.append(tag)
+    
+    return tags
+
 def main():
     """
     Main function to execute the entire scraping and processing pipeline.
@@ -132,16 +197,31 @@ def main():
 
         chapter_number = extract_chapter_number(url)
         chunks = text_splitter.split_text(content)
+        total_chunks = len(chunks)
+        
+        # Generate common metadata for all chunks from this content
+        skill_id = generate_skill_id(title, content)
+        criticality = determine_criticality(content)
+        tags = generate_tags(title, content, part_title)
         
         for chunk_index, chunk in enumerate(chunks):
+            # Create unique ID for this chunk
+            chunk_id = f"{chapter_number}-chunk-{chunk_index}"
+            
             all_chunks.append({
-                'page_content': chunk,
-                'metadata': {
-                    'part_title': part_title,
-                    'chapter_number': chapter_number,
-                    'title': title,
-                    'source_url': url,
-                    'chunk_id': f"chunk_{chunk_index}"
+                "ID": chunk_id,
+                "chunkIndex": chunk_index,
+                "content": chunk,
+                "criticality": criticality,
+                "skillId": skill_id,
+                "source": "Credentia Northern California Skill Listing 2024",
+                "tags": tags,
+                "totalChunks": total_chunks,
+                "metadata": {
+                    "part_title": part_title,
+                    "chapter_number": chapter_number,
+                    "title": title,
+                    "source_url": url
                 }
             })
     
